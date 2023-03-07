@@ -1,0 +1,8 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store
+./output/tissue_data/muscle_skeletal.RDS
+./output/old_sim_p/npsim_result.v15k.RDS
+./code/old_sim_code/np/dat_Sim/GTEx_Data_400and400.RData
