@@ -1,4 +1,4 @@
-here::i_am("code/sim_code/npsim_tt5_gof.R")
+here::i_am("code/sim_code/npsim_qq.R")
 
 library(here)
 suppressPackageStartupMessages(library(tidyverse))
@@ -13,12 +13,6 @@ suppressPackageStartupMessages(library(SummarizedExperiment))
 source(here("code/tools_code/de_methods_rope.R"))
 suppressPackageStartupMessages(library(doSNOW))
 
-# Number of threads to use for multithreaded computing. This must be
-# specified in the command-line shell; e.g., to use 8 threads, run
-# command
-#
-#  R CMD BATCH '--args nc=8' mouthwash_sims.R
-#
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) == 0) {
   nc <- 1
@@ -49,22 +43,21 @@ message(paste("This is NP simulation", sim.name))
 ngene <- 10000
 lfc_sd <- 0.8
 fdr_c.grid <- seq(0.01, 0.3, 0.01)
+prop_null <- 0.8
+nsamp.l <- c(50, 100, 200, 400)
+filter <- T
 ## Load in muscle data and filter ---------------------------------------------
 musc <- readRDS(here("output/tissue_data/muscle_skeletal.RDS"))
 which_bad <- rowMeans(assay(musc)) < 10
 musc <- musc[!which_bad, ]
 fullcounts <- assay(musc)
 
-## Set up parallel computing environment --------------------------------------
-# nc <- 4
-cl <- parallel::makeCluster(nc)
-doParallel::registerDoParallel(cl = cl)
-stopifnot(foreach::getDoParWorkers() > 1)
+res.list <- list()
 
-retmat <- foreach(
-  iterindex = seq_len(itermax)
-) %dopar% {
-  set.seed(iterindex)
+for (ni in 1:length(nsamp.l)) {
+  nsamp <- nsamp.l[ni]
+  nn <- paste0("n/2=",nsamp/2)
+  set.seed(nsamp)
   ## Simulate data ---------------------------------------------------
   which_gene <- sort(sample(seq_len(BiocGenerics::nrow(musc)), ngene))
   which_samp <- sort(sample(seq_len(BiocGenerics::ncol(musc)), nsamp))
@@ -79,48 +72,33 @@ retmat <- foreach(
   countdat <- thout$mat
   design_mat <- cbind(thout$design_obs, thout$designmat)
   beta <- c(thout$coefmat)
-
+  
   if (filter == TRUE) {
     keep <- edgeR::filterByExpr(countdat, design = design_mat)
     countdat <- countdat[keep, ]
     beta <- beta[keep]
   }
-
+  
   which_null <- abs(beta) < 10^-6
-  dge <- edgeR::DGEList(counts = countdat, group = design_mat[, 2])
-  dge <- edgeR::calcNormFactors(dge)
-  dge <- edgeR::estimateDisp(y = dge, design = design_mat)
-  
-  count.norm.0 <- edgeR::cpm(dge)[,design_mat[, 2] == 0]
-  count.norm.1 <- edgeR::cpm(dge)[,design_mat[, 2] == 1]
-  
-  dis <- dge$common.dispersion
-  # dis <- dge$tagwise.dispersion
-  
-  library(vcd)
-  
-  p.0 <- unlist(lapply(1:nrow(countdat), FUN = function(gene) {
-    tt <- summary(goodfit(round(count.norm.0)[gene,], type = "nbinomial", par = list(size = 1/dis)))
-    tt[,3]}))
-  
-  p.1 <- unlist(lapply(1:nrow(countdat), FUN = function(gene) {
-    tt <- summary(goodfit(round(count.norm.1)[gene,], type = "nbinomial", par = list(size = 1/dis)))
-    tt[,3]}))
-  
-  ## Return ----------------------------------------------------------
-  null.p <- tibble(g0 = p.0[which_null],g1 = p.1[which_null])
-  nnull.p <- tibble(g0 = p.0[!which_null],g1 = p.1[!which_null])
-  res <- list(null.p = null.p, nnull.p= nnull.p)
-  res
-}
-stopCluster(cl)
-
-s.folder.name <- "gof"
-
-if (filter == FALSE) {
-  s.path <- here("output", s.folder.name, paste0(sim.name, ".NP.RDS"))
-} else {
-  s.path <- here("output", paste0(s.folder.name, "_f"), paste0(sim.name, ".NP.RDS"))
+  res <- roper::rope(datmat = countdat, X_model = design_mat, x_PI_idx = dim(design_mat)[2])
+  ts <- na.omit(2 * res$adj_logLR[which_null])
+  res.list[[nn]] <- ts
+  cat(nn)
 }
 
-saveRDS(object = retmat, file = s.path)
+saveRDS(res.list, file = here("output/qq_plot/NP_qqdat.RDS"))
+
+res.list$`n/2=25`
+y <- res.list$`n/2=200`
+
+par(mfrow=c(1,4))
+for (ni in 1:4){
+  y <- res.list[[ni]]
+  qqplot(qchisq(ppoints(length(y)), df = 1), y, main = (paste0("Chisq Q-Q plot for NP: n/2=",nsamp.l[ni]/2)),xlab = "Theoretical Quantiles", ylab = "Sample Quantiles", xlim = c(0,25), ylim = c(0,25))
+  ggplot2::last_plot() + qqline(y, distribution = function(p) qchisq(p, df = 1), prob = c(0.1, 0.6), col = 2)
+}
+
+qqplot(qchisq(ppoints(length(y)), df = 1), y, main = expression("Q-Q plot for" ~~ {chi^2}[nu == 1]), )
+
+library(ggplot2)
+dev.off()

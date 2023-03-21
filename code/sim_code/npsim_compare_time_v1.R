@@ -11,14 +11,7 @@ suppressPackageStartupMessages(library(tidyverse))
 library(seqgendiff)
 suppressPackageStartupMessages(library(SummarizedExperiment))
 source(here("code/tools_code/de_methods_time.R"))
-# suppressPackageStartupMessages(library(doSNOW))
 
-# Number of threads to use for multithreaded computing. This must be
-# specified in the command-line shell; e.g., to use 8 threads, run
-# command
-#
-#  R CMD BATCH '--args nc=8' mouthwash_sims.R
-#
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) == 0) {
   nc <- 1

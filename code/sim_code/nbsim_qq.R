@@ -1,4 +1,4 @@
-here::i_am("code/sim_code/nbsim_tt5_qq.R")
+here::i_am("code/sim_code/nbsim_qq.R")
 
 library(here)
 suppressPackageStartupMessages(library(tidyverse))

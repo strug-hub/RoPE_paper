@@ -1,4 +1,4 @@
-here::i_am("code/sim_code/tt.R")
+here::i_am("code/sim_code/npsim_code.R")
 
 library(here)
 suppressPackageStartupMessages(library(tidyverse))
@@ -13,12 +13,8 @@ suppressPackageStartupMessages(library(SummarizedExperiment))
 source(here("code/tools_code/de_methods_rope.R"))
 suppressPackageStartupMessages(library(doSNOW))
 
-# Number of threads to use for multithreaded computing. This must be
-# specified in the command-line shell; e.g., to use 8 threads, run
-# command
-#
-#  R CMD BATCH '--args nc=8' mouthwash_sims.R
-#
+# Number of threads to use for multithreaded computing.
+
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) == 0) {
   nc <- 1
@@ -61,9 +57,9 @@ cl <- parallel::makeCluster(nc)
 doParallel::registerDoParallel(cl = cl)
 stopifnot(foreach::getDoParWorkers() > 1)
 
-
 retmat <- foreach(
-  iterindex = seq_len(itermax)
+  iterindex = seq_len(itermax),
+  .combine = rbind
 ) %dopar% {
   set.seed(iterindex)
   ## Simulate data ---------------------------------------------------
@@ -80,30 +76,78 @@ retmat <- foreach(
   countdat <- thout$mat
   design_mat <- cbind(thout$design_obs, thout$designmat)
   beta <- c(thout$coefmat)
-  
+
   if (filter == TRUE) {
     keep <- edgeR::filterByExpr(countdat, design = design_mat)
     countdat <- countdat[keep, ]
     beta <- beta[keep]
   }
-  
+
   which_null <- abs(beta) < 10^-6
-  dge <- edgeR::DGEList(counts = countdat, group = design_mat[, 2])
-  dge <- edgeR::calcNormFactors(dge)
-  dge <- edgeR::estimateDisp(y = dge, design = design_mat)
-  
-  count.norm.0 <- edgeR::cpm(dge)[,design_mat[, 2] == 0]
-  count.norm.1 <- edgeR::cpm(dge)[,design_mat[, 2] == 1]
-  
-  dis <- dge$common.dispersion
-  # dis <- dge$tagwise.dispersion
-  
+
+  ## Fit methods -----------------------------------------------------
+  fitlist <- list(
+    vout = get_voom(countdat = countdat, design_mat = design_mat),
+    dout = get_DESeq2(countdat = countdat, design_mat = design_mat),
+    eout = get_edgeR(countdat = countdat, design_mat = design_mat),
+    rout = get_rope(countdat = countdat, design_mat = design_mat),
+    wout = get_wilcoxon(countdat = countdat, design_mat = design_mat),
+    nout = get_NOISeq(countdat = countdat, design_mat = design_mat),
+    dnfout = get_DESeq2_nf(countdat = countdat, design_mat = design_mat),
+    nfout = get_NOISeq_f(countdat = countdat, design_mat = design_mat),
+    xout = get_dearseq(countdat = countdat, design_mat = design_mat)
+  )
+
+  ## Assess fits -----------------------------------------------------
+  res.perf <- unlist(lapply(fdr_c.grid, FUN = function(fdr_c) {
+    fitlist <- lapply(fitlist, FUN = function(obj) {
+      # obj$qval <- p.adjust(obj$pval, method = "BH")
+      obj$discovery <- obj$qval < fdr_c
+      return(obj)
+    })
+
+    fprvec <- sapply(fitlist, FUN = function(obj) {
+      if (any(obj$discovery, na.rm = TRUE)) {
+        mean(which_null[obj$discovery], na.rm = TRUE)
+      } else {
+        0
+      }
+    })
+    names(fprvec) <- paste0("fpr_", names(fprvec), "_q_", fdr_c)
+
+    powervec <- sapply(fitlist, FUN = function(obj) {
+      mean(obj$discovery[!which_null], na.rm = TRUE)
+    })
+    names(powervec) <- paste0("power_", names(powervec), "_q_", fdr_c)
+    return(c(fprvec, powervec))
+  }))
+
+
+  msevec <- sapply(fitlist, FUN = function(obj) {
+    suppressWarnings(mean((obj$bhat - beta)^2, na.rm = TRUE))
+  })
+  names(msevec) <- paste0("mse_", names(msevec))
+
+  # Assess outliers removal:
+  olnavec <- sapply(fitlist, FUN = function(obj) {
+    as.integer(obj$n.remove)
+  })
+  names(olnavec) <- paste0("olna_", names(olnavec))
+
+  ## Summary stat of count matrix ------------------------------------
+  varvec <- apply(log2(countdat + 0.5)[!which_null, , drop = FALSE], 1, var)
+  betavarvec <- apply(tcrossprod(beta[!which_null], design_mat[, 2]), 1, var)
+  mpve <- median(betavarvec / varvec)
+
+
   ## Return ----------------------------------------------------------
-  res <- data.frame(r0 =rowSums(count.norm.0),r1=rowSums(count.norm.1))
+  retvec <- c(res.perf, msevec, mpve = mpve, olnavec)
+
+  retvec
 }
 stopCluster(cl)
 
-s.folder.name <- "gof"
+s.folder.name <- "sim_ad_out"
 
 if (filter == FALSE) {
   s.path <- here("output", s.folder.name, paste0(sim.name, ".NP.RDS"))
