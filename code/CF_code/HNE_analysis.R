@@ -60,9 +60,9 @@ de2res.tab.ranked.f <- de2res.tab.ranked[!is.na(de2res.tab.ranked$padj),]
 res.de2_m3 <- de2res.tab.ranked.f 
 
 
-res.de2_m3[1:10,]
-
-match("SLC9A3", res.de2_m3$Genes)
+# res.de2_m3[1:10,]
+# 
+# match("SLC9A3", res.de2_m3$Genes)
 
 sum(res.de2_m3$padj < 0.05)
 sum(res.de2_m3$padj < 0.1)
@@ -80,12 +80,12 @@ dqlf$Genes <-
   as.character(Count.v0[match(rownames(dqlf), Count.v0$Name), ]$Description)
 edgeR_m3_qlf <- dqlf
 
-match("SLC9A3", edgeR_m3_qlf$Genes)
-
-edgeR_m3_qlf[1:20,]
+# match("SLC9A3", edgeR_m3_qlf$Genes)
+# 
+# edgeR_m3_qlf[1:20,]
 
 edgeR_m3 <- edgeR_m3_qlf
-edgeR_m3_qlf[1:10,]
+# edgeR_m3_qlf[1:10,]
 # HNE analysis: voom ----------------------------------------------------
 v <- voom(y.f, design, plot = FALSE)
 
@@ -105,12 +105,10 @@ de_table$Genes <-
 head(de_table)
 lv_m3 <- de_table
 
-match("SLC9A3", lv_m3$Genes)
+# match("SLC9A3", lv_m3$Genes)
 
 # HNE analysis: RoPE ----------------------------------------------------
 library(roper)
-
-design
 
 RoPE_raw_res <-
   rope(
@@ -124,12 +122,12 @@ table_rplr_m3$Genes <-
   as.character(Count.v0[match(rownames(table_rplr_m3), Count.v0$Name), ]$Description)
 RoPE_m3 <- table_rplr_m3
 
-RoPE_m3[1:20,]
-
-match("SLC9A3", RoPE_m3$Genes)
-
-sum(RoPE_m3$padj < 0.05)
-sum(RoPE_m3$padj < 0.1)
+# RoPE_m3[1:20,]
+# 
+# match("SLC9A3", RoPE_m3$Genes)
+# 
+# sum(RoPE_m3$padj < 0.05)
+# sum(RoPE_m3$padj < 0.1)
 # save(RoPE_m3, file = here("data_local","out_data","RoPE_HNE.RData"))
 
 RoPE.glist.p05 <- RoPE_m3$Genes[1:sum(RoPE_m3$padj < 0.05)]
